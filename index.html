@@ -1,125 +1,179 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8" />
-<title>プラネットプランター風 都市シミュレーション</title>
+<meta charset="UTF-8">
+<title>Decomposer City</title>
 <style>
-body{margin:0;display:flex;font-family:sans-serif;background:#f4f6f8}
-#game{flex:3;padding:10px}
-#ui{flex:1;background:#ffffff;border-left:2px solid #ccc;padding:10px;overflow-y:auto}
-.grid{display:grid;grid-template-columns:repeat(8,1fr);gap:4px}
-.cell{aspect-ratio:1;background:#ddd;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;position:relative}
-.cell span{font-size:10px;position:absolute;bottom:2px;right:4px}
-button{margin:2px}
-.seed-btn{padding:6px 10px;border-radius:6px;border:none;cursor:pointer}
+body { font-family: sans-serif; background:#eef2f3; margin:0; }
+header { background:#34495e; color:#fff; padding:10px; }
+#info { display:flex; gap:20px; padding:10px; }
+#grid { display:grid; grid-template-columns:repeat(6,80px); gap:6px; padding:10px; }
+.cell {
+  width:80px; height:80px; background:#fff;
+  border-radius:10px; display:flex;
+  flex-direction:column; align-items:center; justify-content:center;
+  font-size:12px; cursor:pointer;
+}
+button { margin:3px; }
+#log { height:140px; overflow:auto; background:#fff; padding:5px; }
+.win { color:green; font-weight:bold; }
+.lose { color:red; font-weight:bold; }
 </style>
 </head>
 <body>
-<div id="game">
-<h2>都市エリア</h2>
-<div class="grid" id="grid"></div>
-<h3>タネ選択</h3>
-<div id="seeds"></div>
-</div>
-<div id="ui">
-<h2>📘 ルールブック</h2>
-<div id="rulebook"></div>
-</div>
-<script>
-const SIZE=8;
-const gridEl=document.getElementById('grid');
-const seedsEl=document.getElementById('seeds');
-let selectedSeed='住宅';
 
-const SEEDS={
-住宅:{color:'#e74c3c'},
-緑地:{color:'#2ecc71'},
-工場:{color:'#f1c40f'},
-商業:{color:'#3498db'},
-公園:{color:'#1abc9c',advanced:true},
-複合商業:{color:'#9b59b6',advanced:true},
-環境工場:{color:'#27ae60',advanced:true}
+<header>
+<h2>Decomposer City</h2>
+<div>都市タイプ：<span id="cityType">未発展</span></div>
+</header>
+
+<div id="info">
+<div>
+<h4>タネ</h4>
+<button onclick="selectSeed('住宅')">住宅</button>
+<button onclick="selectSeed('緑地')">緑地</button>
+<button onclick="selectSeed('商業')">商業</button>
+<button onclick="selectSeed('工場')">工場</button>
+<div id="unlock"></div>
+</div>
+
+<div>
+<h4>状態</h4>
+<div>ターン: <span id="turn">0</span></div>
+<div>災害未対処: <span id="fail">0</span></div>
+</div>
+</div>
+
+<div id="grid"></div>
+
+<h4>ログ</h4>
+<div id="log"></div>
+
+<script>
+const size = 6;
+let grid = [];
+let selected = "住宅";
+let turn = 0;
+let fail = 0;
+let unlocked = {};
+let gameEnd = false;
+
+const log = msg => {
+  document.getElementById("log").innerHTML += msg+"<br>";
 };
 
-let grid=[];
+const gridDiv = document.getElementById("grid");
 
 function init(){
- for(let i=0;i<SIZE*SIZE;i++){
-  grid.push({type:null,level:0});
- }
- renderGrid();renderSeeds();updateRulebook();
+  for(let i=0;i<size*size;i++){
+    grid.push({type:"空", lv:0, disabled:false});
+  }
+  draw();
 }
 
-function renderGrid(){
- gridEl.innerHTML='';
- grid.forEach((c,i)=>{
-  const d=document.createElement('div');
-  d.className='cell';
-  if(c.type){d.style.background=SEEDS[c.type].color;d.innerHTML=c.type+'<span>Lv'+c.level+'</span>'}
-  d.onclick=()=>placeSeed(i);
-  gridEl.appendChild(d);
- });
+function draw(){
+  gridDiv.innerHTML="";
+  grid.forEach((c,i)=>{
+    const d=document.createElement("div");
+    d.className="cell";
+    d.innerHTML = c.type+"<br>Lv"+c.lv;
+    d.onclick=()=>place(i);
+    gridDiv.appendChild(d);
+  });
 }
 
-function renderSeeds(){
- seedsEl.innerHTML='';
- Object.keys(SEEDS).forEach(k=>{
-  if(SEEDS[k].advanced) return;
-  const b=document.createElement('button');
-  b.className='seed-btn';
-  b.style.background=SEEDS[k].color;
-  b.textContent=k;
-  b.onclick=()=>selectedSeed=k;
-  seedsEl.appendChild(b);
- });
+function selectSeed(s){ selected=s; }
+
+function place(i){
+  if(gameEnd) return;
+  const c=grid[i];
+  if(c.disabled) return;
+
+  if(c.type===selected){
+    c.lv++;
+  }else{
+    c.type=selected;
+    c.lv=1;
+  }
+
+  checkLocal(i);
+  turn++;
+  document.getElementById("turn").innerText=turn;
+  disasterCheck();
+  updateCityType();
+  draw();
 }
 
-function placeSeed(i){
- const c=grid[i];
- if(!c.type){c.type=selectedSeed;c.level=1;}
- else if(c.type===selectedSeed){c.level++;checkLevelUp(i)}
- checkCombo(i);
- checkDisaster();
- renderGrid();
+function checkLocal(i){
+  const c=grid[i];
+  if(c.type==="住宅" && c.lv===3) c.type="集合住宅";
+  if(c.type==="集合住宅" && c.lv===3) c.type="高密度住宅";
+  if(c.type==="高密度住宅" && c.lv===3 && greenRate()<20){
+    c.type="スラム";
+    log("🏚 スラム発生");
+  }
 }
 
-function checkLevelUp(i){
- const c=grid[i];
- if(c.type==='緑地' && c.level>=3){c.type='公園';c.level=1;flash();}
- if(c.type==='商業' && c.level>=3){c.type='複合商業';c.level=1;flash();}
+function greenRate(){
+  return grid.filter(c=>c.type.includes("緑")).length / grid.length *100;
 }
 
-function checkCombo(i){
- const c=grid[i];
- if(c.type==='工場' && c.level>=2){
-  const greens=grid.filter(x=>x.type==='緑地').length;
-  if(greens>=3){c.type='環境工場';c.level=1;flash();}
- }
+function disasterCheck(){
+  let rate=0.15;
+  if(greenRate()<20) rate+=0.1;
+  if(Math.random()<rate){
+    triggerDisaster();
+  }
 }
 
-function checkDisaster(){
- const houses=grid.filter(c=>c.type==='住宅').length;
- const greens=grid.filter(c=>c.type==='緑地'||c.type==='公園').length;
- if(houses>=10 && greens<3 && Math.random()<0.1){alert('🦠 疫病発生！');}
- if(greens<2 && Math.random()<0.1){alert('🌾 凶作発生！');}
- if(Math.random()<0.05){alert('🌋 自然災害！');}
+function triggerDisaster(){
+  const types=["自然災害","疫病","凶作","公害"];
+  const d=types[Math.floor(Math.random()*types.length)];
+  log("⚠ 災害発生："+d);
+  fail++;
+  document.getElementById("fail").innerText=fail;
+
+  if(d==="疫病") unlock("病院");
+  if(d==="凶作") unlock("農地");
+  if(d==="公害") unlock("行政");
+
+  if(d==="疫病"){
+    grid.forEach(c=>{
+      if(c.type==="高密度住宅") c.type="スラム";
+    });
+  }
+  if(d==="公害"){
+    grid.forEach(c=>{
+      if(c.type==="緑地") c.disabled=true;
+    });
+  }
+
+  checkEnd();
 }
 
-function flash(){document.body.style.background='#fff';setTimeout(()=>document.body.style.background='#f4f6f8',80)}
+function unlock(s){
+  if(unlocked[s]) return;
+  unlocked[s]=true;
+  const b=document.createElement("button");
+  b.innerText=s;
+  b.onclick=()=>selectSeed(s);
+  document.getElementById("unlock").appendChild(b);
+  log("🔓 新タネ解放："+s);
+}
 
-function updateRulebook(){
- document.getElementById('rulebook').innerHTML=`
-<b>■ 基本タネ</b><br>
-🔴住宅 🔵商業 🟢緑地 🟡工場<br><br>
-<b>■ レベルアップ</b><br>
-緑地Lv3 → 公園<br>
-商業Lv3 → 複合商業<br><br>
-<b>■ 合わせ技</b><br>
-工場Lv2 + 緑地3 → 環境工場<br><br>
-<b>■ 災害</b><br>
-自然災害：毎ターン5%<br>
-凶作：緑地2未満<br>
-疫病：住宅10以上+緑地不足<br>`;
+function updateCityType(){
+  let type="未発展";
+  if(greenRate()>=40) type="🌱 環境先進都市";
+  if(grid.filter(c=>c.type.includes("商業")).length>=5) type="💰 経済都市";
+  if(grid.some(c=>c.type==="医療センター")) type="🏥 安心都市";
+  document.getElementById("cityType").innerText=type;
+}
+
+function checkEnd(){
+  if(fail>=3){
+    log("<span class='lose'>☠ 崩壊都市（ゲームオーバー）</span>");
+    gameEnd=true;
+  }
 }
 
 init();
