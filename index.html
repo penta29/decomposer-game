@@ -1,75 +1,158 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <title>Decompo Planter</title>
-    <script src="https://cdnjs.cloudflare.com"></script>
-    <style>
-        body { margin: 0; background: #020508; overflow: hidden; font-family: sans-serif; color: #fff; }
-        #p5-container { width: 100%; height: 600px; }
-    </style>
+<meta charset="UTF-8">
+<title>Decompo Planet</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
+<style>
+    body { margin: 0; background: #020508; overflow: hidden; font-family: sans-serif; color: #fff; }
+    #p5-container { width: 100%; height: 100vh; }
+</style>
 </head>
 <body>
-    <div id="p5-container"></div>
-    <script>
-        let items = [];
-        let decomposers = [];
-        let carbon = 0, nitrogen = 0, humidity = 1.0;
-        let isPolluted = false;
+<div id="p5-container"></div>
+<script>
+let decomposers = [];
+let items = [];
+let cities = [];
+let carbon = 0, humidity = 1.0;
+let mode = 'normal';
+let boostTimer = 0;
 
-        class Decomposer {
-            constructor(type) {
-                this.pos = createVector(random(-200, 200), random(-200, 200));
-                this.type = type;
-            }
-            update() { this.pos.add(p5.Vector.random2D().mult(0.5)); }
-            display() {
-                fill(100, 200, 100);
-                noStroke();
-                ellipse(this.pos.x, this.pos.y, 5, 5);
-            }
-        }
+// --- クラス ---
+class Decomposer {
+    constructor() {
+        this.pos = createVector(random(width), random(height));
+        this.speed = 0.5;
+    }
+    update() {
+        let spd = this.speed;
+        if (mode === 'boost') spd = 2.5;
+        if (mode === 'danger') spd = 0.2;
+        this.pos.add(p5.Vector.random2D().mult(spd));
+        this.pos.x = constrain(this.pos.x, 0, width);
+        this.pos.y = constrain(this.pos.y, 0, height);
+    }
+    display() {
+        if (mode === 'boost') fill(50, 255, 50);
+        else if (mode === 'danger') fill(255, 50, 50, 180);
+        else fill(100, 200, 100);
+        noStroke();
+        ellipse(this.pos.x, this.pos.y, 8, 8);
+    }
+}
 
-        class OrganicMatter {
-            constructor(x, y, type) {
-                this.pos = createVector(x, y);
-                this.type = type;
-                this.life = 255;
-            }
-            update() { this.life -= 1; }
-            display() {
-                fill(200, 150, 100, this.life);
-                rect(this.pos.x, this.pos.y, 10, 10);
-            }
-            isDead() { return this.life <= 0; }
-        }
+class OrganicMatter {
+    constructor(x, y) {
+        this.pos = createVector(x, y);
+        this.life = 255;
+    }
+    update() { 
+        let decay = mode === 'boost' ? 1.5 : 0.5;
+        this.life -= decay; 
+    }
+    display() {
+        fill(200, 150, 100, this.life);
+        rect(this.pos.x - 5, this.pos.y - 5, 10, 10);
+    }
+    isDead() { return this.life <= 0; }
+}
 
-        function setup() {
-            let container = document.getElementById('p5-container');
-            createCanvas(container.offsetWidth, 600).parent('p5-container');
-            for (let i = 0; i < 10; i++) decomposers.push(new Decomposer('bacteria'));
+class City {
+    constructor(x, y) {
+        this.pos = createVector(x, y);
+        this.size = 20;
+        this.health = 100;
+    }
+    update() {
+        // 分解者の活動で健康回復
+        let nearbyDecomposers = decomposers.filter(d => p5.Vector.dist(d.pos, this.pos) < 50);
+        if (nearbyDecomposers.length > 0) {
+            this.health += 0.1 * nearbyDecomposers.length;
+            this.health = min(this.health, 100);
         }
+        // 汚染が多いと危険モード
+        if (this.health < 30) mode = 'danger';
+    }
+    display() {
+        fill(map(this.health, 0, 100, 150, 0), map(this.health, 0, 100, 0, 200), 50);
+        rect(this.pos.x - this.size/2, this.pos.y - this.size/2, this.size, this.size);
+    }
+}
 
-        function draw() {
-            background(2, 5, 10);
-            translate(width / 2, height / 2);
-            for (let i = items.length - 1; i >= 0; i--) {
-                items[i].update();
-                items[i].display();
-                if (items[i].isDead()) items.splice(i, 1);
+// --- setup/draw ---
+function setup() {
+    createCanvas(windowWidth, windowHeight).parent('p5-container');
+    for (let i = 0; i < 20; i++) decomposers.push(new Decomposer());
+}
+
+function draw() {
+    background(2, 5, 10);
+
+    // --- 更新 ---
+    decomposers.forEach(d => d.update());
+    for (let i = items.length -1; i>=0; i--) {
+        items[i].update();
+        if (items[i].isDead()) items.splice(i,1);
+    }
+    cities.forEach(c => c.update());
+
+    // --- 分解処理 ---
+    decomposers.forEach(d => {
+        items.forEach(item => {
+            let distToItem = p5.Vector.dist(d.pos, item.pos);
+            if (distToItem < 10) {
+                carbon += 0.2;
+                item.life -= 3;
             }
-            decomposers.forEach(d => {
-                d.update();
-                d.display();
-            });
-            resetMatrix();
-            fill(255);
-            text(`Carbon: ${carbon}  Humidity: ${humidity.toFixed(2)}`, 20, 30);
-        }
+        });
+    });
 
-        function mousePressed() {
-            items.push(new OrganicMatter(mouseX - width/2, mouseY - height/2, 'leaf'));
-        }
-    </script>
+    // --- 描画 ---
+    items.forEach(i => i.display());
+    cities.forEach(c => c.display());
+    decomposers.forEach(d => d.display());
+
+    // --- モード処理 ---
+    if (mode === 'boost') {
+        boostTimer--;
+        if (boostTimer <=0) mode = 'normal';
+        fill(50,255,50,50);
+        ellipse(width/2, height/2, width, height);
+    }
+    if (mode === 'danger') {
+        fill(255,0,50,50);
+        rect(0,0,width,height);
+    }
+
+    // --- UI ---
+    fill(255);
+    textSize(18);
+    text(`Carbon: ${carbon.toFixed(1)}  Humidity: ${humidity.toFixed(2)}  Mode: ${mode}`, 20, 30);
+}
+
+// --- マウス操作 ---
+function mousePressed() {
+    if (keyIsDown(SHIFT)) {
+        // SHIFT+クリックで都市配置
+        cities.push(new City(mouseX, mouseY));
+    } else {
+        // 通常クリックで有機物配置
+        items.push(new OrganicMatter(mouseX, mouseY));
+    }
+}
+
+// --- キー操作 ---
+function keyPressed() {
+    if (key === 'B' || key === 'b') {
+        mode = 'boost';
+        boostTimer = 300; // 約5秒
+    }
+}
+
+function windowResized() {
+    resizeCanvas(windowWidth, windowHeight);
+}
+</script>
 </body>
 </html>
