@@ -2,172 +2,127 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8" />
-<title>Planet Planter – Decomposer Edition</title>
-<script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+<title>プラネットプランター風 都市シミュレーション</title>
 <style>
-body {
-  margin: 0;
-  font-family: "Segoe UI", sans-serif;
-  background: #e6eef2;
-}
-#ui {
-  position: absolute;
-  right: 0;
-  top: 0;
-  width: 360px;
-  height: 100%;
-  background: #ffffff;
-  border-left: 2px solid #ccc;
-  overflow-y: auto;
-  padding: 12px;
-  box-sizing: border-box;
-}
-.seed-btn {
-  display: inline-block;
-  padding: 6px 10px;
-  margin: 4px;
-  border-radius: 6px;
-  cursor: pointer;
-  color: #fff;
-  font-weight: bold;
-}
+body{margin:0;display:flex;font-family:sans-serif;background:#f4f6f8}
+#game{flex:3;padding:10px}
+#ui{flex:1;background:#ffffff;border-left:2px solid #ccc;padding:10px;overflow-y:auto}
+.grid{display:grid;grid-template-columns:repeat(8,1fr);gap:4px}
+.cell{aspect-ratio:1;background:#ddd;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;position:relative}
+.cell span{font-size:10px;position:absolute;bottom:2px;right:4px}
+button{margin:2px}
+.seed-btn{padding:6px 10px;border-radius:6px;border:none;cursor:pointer}
 </style>
 </head>
-
 <body>
-<div id="ui"></div>
-
-<script>
-let grid = [];
-let cols = 8;
-let rows = 7;
-let hexSize = 32;
-
-let currentSeed = "red";
-
-const seedInfo = {
-  red:  { name:"住宅", color:"#e74c3c" },
-  green:{ name:"緑地", color:"#2ecc71" },
-  yellow:{ name:"工場", color:"#f1c40f" },
-  blue:{ name:"商業", color:"#3498db" }
-};
-
-let counts = { red:0, green:0, yellow:0, blue:0 };
-
-function setup(){
-  createCanvas(window.innerWidth-360, window.innerHeight);
-  initGrid();
-  buildUI();
-}
-
-function draw(){
-  background(220,230,235);
-  drawGrid();
-}
-
-function initGrid(){
-  grid=[];
-  for(let y=0;y<rows;y++){
-    for(let x=0;x<cols;x++){
-      grid.push({
-        x,y,
-        seed:null
-      });
-    }
-  }
-}
-
-function drawGrid(){
-  translate(80,80);
-  for(let cell of grid){
-    let px = cell.x * hexSize * 1.5;
-    let py = cell.y * hexSize * 1.732 + (cell.x%2)*hexSize*0.866;
-    drawHex(px,py,hexSize,cell.seed);
-  }
-}
-
-function drawHex(x,y,r,seed){
-  push();
-  translate(x,y);
-  stroke(120);
-  strokeWeight(1);
-  fill(seed ? seedInfo[seed].color : "#ddd");
-  beginShape();
-  for(let a=0;a<6;a++){
-    let ang = PI/3*a;
-    vertex(cos(ang)*r,sin(ang)*r);
-  }
-  endShape(CLOSE);
-  pop();
-}
-
-function mousePressed(){
-  translate(80,80);
-  for(let cell of grid){
-    let px = cell.x * hexSize * 1.5;
-    let py = cell.y * hexSize * 1.732 + (cell.x%2)*hexSize*0.866;
-    if(dist(mouseX-80,mouseY-80,px,py)<hexSize){
-      if(cell.seed){
-        counts[cell.seed]--;
-      }
-      cell.seed=currentSeed;
-      counts[currentSeed]++;
-      buildUI();
-      break;
-    }
-  }
-}
-
-function buildUI(){
-  const ui=document.getElementById("ui");
-  ui.innerHTML=`
-<h2>🌱 ミライのタネ</h2>
-
-<div>
-${Object.keys(seedInfo).map(k=>`
-<span class="seed-btn" style="background:${seedInfo[k].color}"
- onclick="selectSeed('${k}')">
-${seedInfo[k].name}
-</span>`).join("")}
+<div id="game">
+<h2>都市エリア</h2>
+<div class="grid" id="grid"></div>
+<h3>タネ選択</h3>
+<div id="seeds"></div>
 </div>
+<div id="ui">
+<h2>📘 ルールブック</h2>
+<div id="rulebook"></div>
+</div>
+<script>
+const SIZE=8;
+const gridEl=document.getElementById('grid');
+const seedsEl=document.getElementById('seeds');
+let selectedSeed='住宅';
 
-<hr>
+const SEEDS={
+住宅:{color:'#e74c3c'},
+緑地:{color:'#2ecc71'},
+工場:{color:'#f1c40f'},
+商業:{color:'#3498db'},
+公園:{color:'#1abc9c',advanced:true},
+複合商業:{color:'#9b59b6',advanced:true},
+環境工場:{color:'#27ae60',advanced:true}
+};
 
-<h3>📊 都市状況</h3>
-住宅:${counts.red}<br>
-緑地:${counts.green}<br>
-工場:${counts.yellow}<br>
-商業:${counts.blue}
+let grid=[];
 
-<hr>
-
-<h3>🤝 合わせ技（全体ルール）</h3>
-🔴×🟢×2 → 公園<br>
-🔴×🔵×3 → 複合商業施設<br>
-🟡×🔵×2 → 流通拠点<br>
-🟡×🟢×3 → 環境対応工場<br>
-
-<hr>
-
-<h3>⬆ レベルアップ</h3>
-🟢×5 → 都市公園<br>
-🟢×10 → 遊水池公園<br>
-🔴×10 → 高密度住宅<br>
-🟡×12 → 公害都市（失敗）<br>
-
-<hr>
-
-<h3>⚠ トラブル条件</h3>
-🦠 疫病：住宅80以上＋病院なし<br>
-🏭 公害：工場＞緑地×2<br>
-🌾 凶作：緑地減少5ターン<br>
-🌋 災害：半ランダム（緑少で↑）
-`;
+function init(){
+ for(let i=0;i<SIZE*SIZE;i++){
+  grid.push({type:null,level:0});
+ }
+ renderGrid();renderSeeds();updateRulebook();
 }
 
-window.selectSeed = function(k){
-  currentSeed = k;
-};
+function renderGrid(){
+ gridEl.innerHTML='';
+ grid.forEach((c,i)=>{
+  const d=document.createElement('div');
+  d.className='cell';
+  if(c.type){d.style.background=SEEDS[c.type].color;d.innerHTML=c.type+'<span>Lv'+c.level+'</span>'}
+  d.onclick=()=>placeSeed(i);
+  gridEl.appendChild(d);
+ });
+}
+
+function renderSeeds(){
+ seedsEl.innerHTML='';
+ Object.keys(SEEDS).forEach(k=>{
+  if(SEEDS[k].advanced) return;
+  const b=document.createElement('button');
+  b.className='seed-btn';
+  b.style.background=SEEDS[k].color;
+  b.textContent=k;
+  b.onclick=()=>selectedSeed=k;
+  seedsEl.appendChild(b);
+ });
+}
+
+function placeSeed(i){
+ const c=grid[i];
+ if(!c.type){c.type=selectedSeed;c.level=1;}
+ else if(c.type===selectedSeed){c.level++;checkLevelUp(i)}
+ checkCombo(i);
+ checkDisaster();
+ renderGrid();
+}
+
+function checkLevelUp(i){
+ const c=grid[i];
+ if(c.type==='緑地' && c.level>=3){c.type='公園';c.level=1;flash();}
+ if(c.type==='商業' && c.level>=3){c.type='複合商業';c.level=1;flash();}
+}
+
+function checkCombo(i){
+ const c=grid[i];
+ if(c.type==='工場' && c.level>=2){
+  const greens=grid.filter(x=>x.type==='緑地').length;
+  if(greens>=3){c.type='環境工場';c.level=1;flash();}
+ }
+}
+
+function checkDisaster(){
+ const houses=grid.filter(c=>c.type==='住宅').length;
+ const greens=grid.filter(c=>c.type==='緑地'||c.type==='公園').length;
+ if(houses>=10 && greens<3 && Math.random()<0.1){alert('🦠 疫病発生！');}
+ if(greens<2 && Math.random()<0.1){alert('🌾 凶作発生！');}
+ if(Math.random()<0.05){alert('🌋 自然災害！');}
+}
+
+function flash(){document.body.style.background='#fff';setTimeout(()=>document.body.style.background='#f4f6f8',80)}
+
+function updateRulebook(){
+ document.getElementById('rulebook').innerHTML=`
+<b>■ 基本タネ</b><br>
+🔴住宅 🔵商業 🟢緑地 🟡工場<br><br>
+<b>■ レベルアップ</b><br>
+緑地Lv3 → 公園<br>
+商業Lv3 → 複合商業<br><br>
+<b>■ 合わせ技</b><br>
+工場Lv2 + 緑地3 → 環境工場<br><br>
+<b>■ 災害</b><br>
+自然災害：毎ターン5%<br>
+凶作：緑地2未満<br>
+疫病：住宅10以上+緑地不足<br>`;
+}
+
+init();
 </script>
 </body>
 </html>
