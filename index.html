@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Decompo-Planter: The Ultimate Cycle</title>
+    <script src="https://cdnjs.cloudflare.com"></script>
+    <style>
+        body { margin: 0; background: #020508; overflow: hidden; font-family: sans-serif; color: #fff; }
+        #p5-container { width: 100%; height: 600px; background: #020508; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<div id="p5-container"></div>
+<script>
+let items = [], decomposers = [], structures = [];
+let carbon = 0, nitrogen = 0, humidity = 1.0;
+let isPolluted = false, cityStage = "Village", currentItemType = null;
+
+function setup() {
+    let container = document.getElementById('p5-container');
+    createCanvas(container.offsetWidth, 600).parent('p5-container');
+    for(let i=0; i<3; i++) decomposers.push(new Decomposer('fungi'));
+    for(let i=0; i<5; i++) decomposers.push(new Decomposer('bacteria'));
+    for(let i=0; i<2; i++) decomposers.push(new Decomposer('macro'));
+}
+
+function draw() {
+    background(2, 5, 10); translate(width/2, height/2);
+    if (frameCount % 900 === 0 && !isPolluted) isPolluted = true;
+    if (isPolluted) { humidity = 0.2; drawAlert(); } else { humidity = max(1.0, humidity * 0.998); }
+    drawCore();
+    for (let i = items.length - 1; i >= 0; i--) { items[i].update(); items[i].display(); if (items[i].isDead) items.splice(i, 1); }
+    decomposers.forEach(d => { d.update(); d.display(); }); structures.forEach(s => { s.display(); }); drawUI();
+}
+
+function touchStarted() {
+    let mx = mouseX - width/2, my = mouseY - height/2;
+    if (isPolluted) { isPolluted = false; return false; }
+    if (my > height/2 - 100) {
+        if (mx > -120 && mx < -60) currentItemType = 'wood';
+        else if (mx > -30 && mx < 30) currentItemType = 'waste';
+        else if (mx > 60 && mx < 120) currentItemType = 'leaf';
+    } else if (mx > width/2 - 100 && my < -height/2 + 50) { humidity = min(5.0, humidity + 1.0); }
+    else if (currentItemType) { items.push(new OrganicMatter(mx, my, currentItemType)); currentItemType = null; }
+    else { items.push(new OrganicMatter(mx, my, random(['wood', 'waste', 'leaf']))); }
+    return false;
+}
+
+class OrganicMatter {
+    constructor(x, y, type) {
+        this.x = x; this.y = y; this.type = type; this.size = (type === 'wood') ? 40 : 20; this.integrity = 100; this.isDead = false; this.target = createVector(random(-30, 30), random(-30, 30));
+    }
+    update() {
+        this.x = lerp(this.x, this.target.x, 0.02); this.y = lerp(this.y, this.target.y, 0.02);
+        decomposers.forEach(d => { if(dist(this.x, this.y, d.x, d.y) < 50 && d.spec === this.getSpecialist()) { let dmg = 0.5 * humidity; this.integrity -= dmg; carbon += 0.1; if(this.type === 'waste') nitrogen += 0.2; } });
+        if(this.integrity <= 0) { this.isDead = true; buildCity(this.type); }
+    }
+    display() { push(); translate(this.x, this.y); textAlign(CENTER, CENTER); textSize(this.size); let icons = {wood:'🪵', waste:'🍎', leaf:'🍂'}; text(icons[this.type], 0, 0); pop(); }
+    getSpecialist() { return this.type === 'wood' ? 'fungi' : (this.type === 'waste' ? 'bacteria' : 'macro'); }
+}
+class Decomposer {
+    constructor(spec) { this.spec = spec; this.angle = random(TWO_PI); this.radius = random(70, 130); }
+    update() { this.angle += (this.spec === 'bacteria' ? 0.05 : 0.02); this.x = cos(this.angle) * this.radius; this.y = sin(this.angle) * this.radius; }
+    display() { let cols = {fungi:'#96FF32', bacteria:'#3296FF', macro:'#FF6464'}; fill(cols[this.spec]); noStroke(); ellipse(this.x, this.y, 8, 8); }
+}
+class Structure {
+    constructor(angle, type) { this.angle = angle; this.type = type; this.h = 0; }
+    display() { push(); rotate(this.angle); let cols = {wood:'#00FF64', waste:'#0096FF', leaf:'#FFC832'}; stroke(cols[this.type]); strokeWeight(4); if(this.h < 50) this.h += 0.5; line(85, 0, 85 + this.h, 0); pop(); }
+}
+function buildCity(type) { structures.push(new Structure(random(TWO_PI), type)); cityStage = structures.length > 40 ? "Neo City" : (structures.length > 20 ? "Town" : "Village"); }
+function drawUI() {
+    push(); translate(-width/2, -height/2);
+    fill(0, 255, 200); textSize(14); textAlign(LEFT); text(`C: ${floor(carbon)} / N: ${floor(nitrogen)}`, 20, 30); text(`STAGE: ${cityStage}`, 20, 50);
+    fill(255); textSize(30); textAlign(CENTER);
+    text('🪵', width/2 - 90, height - 40); text('🍎', width/2, height - 40); text('🍂', width/2 + 90, height - 40);
+    fill(0, 150, 255); textSize(12); text('💧湿度UP', width - 50, 30);
+    pop();
+}
+function drawCore() { let pulse = sin(frameCount * 0.05) * 5; noFill(); stroke(0, 255, 200, 50); ellipse(0, 0, 160 + pulse, 160 + pulse); fill(10, 30, 20); ellipse(0, 0, 150, 150); }
+function drawAlert() { push(); translate(-width/2, -height/2); fill(255, 0, 85); textSize(30); textAlign(CENTER); text('PLASTIC POLLUTION!!', width/2, height/2); pop(); }
+</script>
+</body>
+</html>
