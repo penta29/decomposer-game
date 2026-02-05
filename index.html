@@ -2,193 +2,205 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>Decompo City</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
+<title>Planet Planter – Visual Complete</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
 <style>
-  body { margin:0; overflow:hidden; font-family:sans-serif; background:#020508; color:#fff;}
-  #p5-container { width:100%; height:100vh; }
+body{margin:0;background:#0b0f1a;color:#fff;font-family:sans-serif;}
 </style>
 </head>
 <body>
-<div id="p5-container"></div>
 <script>
-let decomposers = [];
-let cityTiles = [];
-let panelWidgets = ["House","Factory","Park"];
-let activeWidgets = [];
-let carbon = 0;
-let mode = "normal";
-let boostTimer = 0;
-let disasterTimer = 0;
+/* ===== 設定 ===== */
+const HEX=36, R=4;
+let grid=[], seed="red";
+let flashScreen=0;
 
-// --- Classes ---
-class Decomposer {
-  constructor() {
-    this.pos = createVector(random(width*0.3, width), random(height));
-    this.speed = 0.5;
+/* ===== 色 ===== */
+const COLORS={
+ red:["#e74c3c","#c0392b","#ff7666"],
+ green:["#2ecc71","#27ae60","#6bffb0"],
+ blue:["#3498db","#2980b9","#6fbfff"],
+ yellow:["#f1c40f","#d4ac0d","#ffe680"],
+ park:["#7bed9f","#55c88a","#a8ffd8"],
+ mixed:["#9b59b6","#7d3c98","#d2a6ff"],
+ culture:["#f5f6fa","#dcdde1","#ffffff"]
+};
+
+/* ===== マス ===== */
+class Hex{
+ constructor(q,r){
+  this.q=q; this.r=r;
+  this.seed=null;
+  this.exp=0;
+  this.level=1;
+  this.flash=0;
+  this.hint=null;
+ }
+ neighbors(){
+  const d=[[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]];
+  return d.map(v=>grid.find(h=>h.q==this.q+v[0]&&h.r==this.r+v[1])).filter(Boolean);
+ }
+ update(){
+  if(!this.seed) return;
+  let n=this.neighbors().map(h=>h.seed);
+  this.exp+=0.01;
+  if(n.includes("green")) this.exp+=0.02;
+
+  let old=this.level;
+  if(this.exp>3) this.level=3;
+  else if(this.exp>1.5) this.level=2;
+
+  if(old!=this.level) this.trigger();
+
+  if(this.seed=="red" && n.includes("blue")) this.evolve("mixed");
+  if(this.seed=="green" && n.includes("red")) this.evolve("park");
+  if(["red","green","blue"].every(s=>n.includes(s))) this.evolve("culture");
+ }
+ evolve(s){
+  if(this.seed==s) return;
+  this.seed=s;
+  this.trigger();
+ }
+ trigger(){
+  this.flash=12;
+  flashScreen=10;
+ }
+ danger(){
+  if(this.seed=="yellow" && this.level==1) this.hint="工業が荒れてる";
+  else if(this.seed=="red" && this.level==1) this.hint="暮らしが不安定";
+  else if(this.exp>1.3 && this.level==1) this.hint="変化の予感";
+ }
+ draw(){
+  let p=hexToPix(this.q,this.r);
+  drawHex(p.x,p.y,this.seed);
+  drawIcon(p.x,p.y,this.seed,this.level);
+
+  if(this.flash>0){
+    lightning(p.x,p.y);
+    this.flash--;
   }
-  update() {
-    let spd = this.speed;
-    if(mode=="boost") spd=2.5;
-    if(mode=="danger") spd=0.2;
-    this.pos.add(p5.Vector.random2D().mult(spd));
-    this.pos.x = constrain(this.pos.x, width*0.3, width);
-    this.pos.y = constrain(this.pos.y, 0, height);
-  }
-  display() {
-    if(mode=="boost") fill(50,255,50);
-    else if(mode=="danger") fill(255,50,50,180);
-    else fill(100,200,100);
-    noStroke();
-    ellipse(this.pos.x,this.pos.y,6,6);
-  }
+  if(this.hint) bubble(p.x,p.y-HEX,this.hint);
+ }
 }
 
-class CityTile {
-  constructor(x,y,type){
-    this.pos = createVector(x,y);
-    this.type = type;
-    this.health = 100;
-    this.size = 20;
-  }
-  update(){
-    // 分解者が近くにいると健康回復
-    let nearby = decomposers.filter(d=>p5.Vector.dist(d.pos,this.pos)<50);
-    if(this.type=="Park") this.health += 0.1*nearby.length;
-    else if(this.type=="Factory") this.health -= 0.05*nearby.length;
-    this.health = constrain(this.health,0,100);
-
-    // 街の状態でモード判定
-    let avgHealth = cityTiles.reduce((sum,t)=>sum+t.health,0)/cityTiles.length;
-    if(avgHealth<30) mode="danger";
-  }
-  display(){
-    if(this.type=="House") fill(150,150,255,map(this.health,0,100,50,255));
-    if(this.type=="Factory") fill(255,100,100,map(this.health,0,100,50,255));
-    if(this.type=="Park") fill(100,255,100,map(this.health,0,100,50,255));
-    rect(this.pos.x-this.size/2,this.pos.y-this.size/2,this.size,this.size);
-  }
-}
-
-// --- Setup ---
+/* ===== p5 ===== */
 function setup(){
-  createCanvas(windowWidth,windowHeight).parent('p5-container');
-  for(let i=0;i<30;i++) decomposers.push(new Decomposer());
-  updateActiveWidgets();
+ createCanvas(windowWidth,windowHeight);
+ for(let q=-R;q<=R;q++)for(let r=-R;r<=R;r++)
+  if(abs(q+r)<=R) grid.push(new Hex(q,r));
 }
-
-// --- Draw ---
 function draw(){
-  background(2,5,10);
+ background(10,15,30);
+ translate(width/2,height/2-40);
 
-  // --- Update decomposers ---
-  decomposers.forEach(d=>d.update());
+ grid.forEach(h=>{
+  h.hint=null;
+  h.update();
+  h.danger();
+  h.draw();
+ });
 
-  // --- Update city tiles ---
-  cityTiles.forEach(t=>t.update());
+ if(flashScreen>0){
+  resetMatrix();
+  fill(255,255,255,35);
+  rect(0,0,width,height);
+  flashScreen--;
+ }
 
-  // --- Carbon & decomposer interaction ---
-  cityTiles.forEach(tile=>{
-    decomposers.forEach(d=>{
-      let distTo = p5.Vector.dist(tile.pos,d.pos);
-      if(distTo<30 && tile.type=="Park") carbon += 0.1;
-    });
-  });
-
-  // --- Draw decomposers ---
-  decomposers.forEach(d=>d.display());
-
-  // --- Draw city ---
-  cityTiles.forEach(t=>t.display());
-
-  // --- Draw panel ---
-  drawPanel();
-
-  // --- Mode effects ---
-  if(mode=="boost"){
-    boostTimer--;
-    if(boostTimer<=0) mode="normal";
-    fill(50,255,50,50);
-    ellipse(width/2,height/2,width,height);
-  }
-  if(mode=="danger"){
-    fill(255,0,50,50);
-    rect(width*0.3,0,width*0.7,height);
-  }
-
-  // --- Random disasters ---
-  disasterTimer++;
-  if(disasterTimer>600){
-    triggerDisaster();
-    disasterTimer=0;
-  }
-
-  // --- UI ---
-  fill(255);
-  textSize(18);
-  text(`Carbon: ${carbon.toFixed(1)}  Mode: ${mode}`,20,30);
+ resetMatrix();
+ ui();
 }
 
-// --- Panel ---
-function drawPanel(){
-  fill(50);
-  rect(0,0,width*0.3,height);
-  textSize(16);
-  fill(255);
-  text("Widget Panel",10,30);
-  activeWidgets.forEach((w,i)=>{
-    fill(200);
-    rect(10,50+i*40,120,30);
-    fill(0);
-    text(w,20,70+i*40);
-  });
-}
-
-// --- Mouse ---
+/* ===== 操作 ===== */
 function mousePressed(){
-  if(mouseX>width*0.3){
-    // 置く位置
-    if(activeWidgets.length>0){
-      let w = activeWidgets[0]; // 選択は一番左
-      cityTiles.push(new CityTile(mouseX,mouseY,w));
-      updateActiveWidgets();
-    }
-  }
+ let h=pick(mouseX-width/2,mouseY-height/2+40);
+ if(h && !h.seed){
+  h.seed=seed;
+  h.exp=0.3;
+  h.trigger();
+ }
+}
+function mouseClicked(){
+ let x=width/2-140,y=height-60;
+ ["red","green","blue","yellow"].forEach(s=>{
+  if(mouseX>x&&mouseX<x+55&&mouseY>y&&mouseY<y+40) seed=s;
+  x+=65;
+ });
 }
 
-// --- Key ---
-function keyPressed(){
-  if(key==='B' || key==='b'){
-    mode="boost";
-    boostTimer=300;
-  }
+/* ===== UI ===== */
+function ui(){
+ let x=width/2-140,y=height-60;
+ ["red","green","blue","yellow"].forEach(s=>{
+  fill(COLORS[s][0]); rect(x,y,55,40,20);
+  if(seed==s){stroke(255);noFill();rect(x-3,y-3,61,46,22);noStroke();}
+  x+=65;
+ });
 }
 
-// --- Disaster ---
-function triggerDisaster(){
-  let type = random(["Storm","Fire","Flood"]);
-  cityTiles.forEach(t=>{
-    t.health -= random(10,30);
-    t.health = max(t.health,0);
-  });
+/* ===== 描画 ===== */
+function drawHex(x,y,s){
+ if(!s){fill("#111");stroke(70);}
+ else{
+  stroke(COLORS[s][1]);
+  fill(COLORS[s][0]);
+ }
+ poly(x,y,HEX,6);
+ if(s){
+  noStroke();
+  fill(COLORS[s][2]+"55");
+  poly(x,y-3,HEX-6,6);
+ }
 }
-
-// --- Update widgets based on decomposer state ---
-function updateActiveWidgets(){
-  let avgHealth = decomposers.reduce((sum,d)=>sum+1,0)/decomposers.length; // dummy: always >0
-  // ここでは簡単に、ブーストならレア追加
-  if(mode=="boost"){
-    activeWidgets = ["House","Factory","Park","ScienceLab"];
-  } else if(mode=="danger"){
-    activeWidgets = ["House","Park"];
-  } else {
-    activeWidgets = ["House","Factory","Park"];
-  }
+function drawIcon(x,y,s,l){
+ noStroke();
+ fill(255,180);
+ if(s=="red"){ triangle(x-6,y+6,x,y-6,x+6,y+6); }
+ if(s=="yellow"){ rect(x-4,y-6,8,12); rect(x+6,y-2,4,8); }
+ if(s=="blue"){ rect(x-7,y-4,14,8); }
+ if(s=="green"){ ellipse(x-4,y+2,6); ellipse(x+4,y+2,6); ellipse(x,y-4,6); }
+ if(s=="park"){ ellipse(x,y,12); }
+ if(s=="mixed"){ rect(x-6,y-6,12,12); }
+ if(s=="culture"){ ellipse(x,y,14); }
+ if(l>1){ fill(255); ellipse(x,y+10,3*l); }
 }
-
-// --- Window Resize ---
-function windowResized(){
-  resizeCanvas(windowWidth,windowHeight);
+function lightning(x,y){
+ stroke(200,230,255,180);
+ strokeWeight(2);
+ let px=x,py=y;
+ for(let i=0;i<5;i++){
+  let nx=px+random(-10,10);
+  let ny=py+random(-15,15);
+  line(px,py,nx,ny);
+  px=nx; py=ny;
+ }
+ noStroke();
+}
+function bubble(x,y,t){
+ fill(255,230); noStroke();
+ rect(x-55,y-26,110,22,12);
+ fill(30); textSize(10); textAlign(CENTER,CENTER);
+ text(t,x,y-15);
+}
+function poly(x,y,r,n){
+ beginShape();
+ for(let i=0;i<n;i++){
+  let a=TWO_PI/n*i+PI/6;
+  vertex(x+cos(a)*r,y+sin(a)*r);
+ }
+ endShape(CLOSE);
+}
+function hexToPix(q,r){
+ return {x:HEX*sqrt(3)*(q+r/2),y:HEX*1.5*r};
+}
+function pick(x,y){
+ let best=null,d=9999;
+ grid.forEach(h=>{
+  let p=hexToPix(h.q,h.r);
+  let ds=dist(x,y,p.x,p.y);
+  if(ds<d){d=ds;best=h;}
+ });
+ return d<HEX?best:null;
 }
 </script>
 </body>
