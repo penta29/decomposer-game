@@ -1,169 +1,173 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<title>Planet Planter – Full Visible System</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+<meta charset="UTF-8" />
+<title>Planet Planter – Decomposer Edition</title>
+<script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
 <style>
-body{margin:0;background:#24304f;font-family:sans-serif;}
+body {
+  margin: 0;
+  font-family: "Segoe UI", sans-serif;
+  background: #e6eef2;
+}
+#ui {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 360px;
+  height: 100%;
+  background: #ffffff;
+  border-left: 2px solid #ccc;
+  overflow-y: auto;
+  padding: 12px;
+  box-sizing: border-box;
+}
+.seed-btn {
+  display: inline-block;
+  padding: 6px 10px;
+  margin: 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #fff;
+  font-weight: bold;
+}
 </style>
 </head>
+
 <body>
+<div id="ui"></div>
+
 <script>
-const HEX=28, R=8;
-let grid=[], selected="red";
-let popup="", flash=0;
+let grid = [];
+let cols = 8;
+let rows = 7;
+let hexSize = 32;
 
-const SEED={
- red:{n:"住宅",c:"#e57373"},
- green:{n:"緑地",c:"#81c784"},
- blue:{n:"商業",c:"#64b5f6"},
- yellow:{n:"工業",c:"#fff176"},
+let currentSeed = "red";
 
- dense:{n:"高密度住宅",c:"#d32f2f"},
- town:{n:"ニュータウン",c:"#b71c1c"},
- park:{n:"住宅公園",c:"#66bb6a"},
-
- forest:{n:"森林公園",c:"#388e3c"},
- flood:{n:"遊水池公園",c:"#26a69a"},
-
- hub:{n:"商業拠点",c:"#1e88e5"},
- center:{n:"中心市街地",c:"#0d47a1"},
-
- factory:{n:"工業地帯",c:"#fbc02d"},
- heavy:{n:"重工業地帯",c:"#f57f17"},
-
- polluted:{n:"公害地区",c:"#757575"},
- disease:{n:"疫病流行",c:"#8d6e63"},
- ruin:{n:"荒廃地区",c:"#424242"}
+const seedInfo = {
+  red:  { name:"住宅", color:"#e74c3c" },
+  green:{ name:"緑地", color:"#2ecc71" },
+  yellow:{ name:"工場", color:"#f1c40f" },
+  blue:{ name:"商業", color:"#3498db" }
 };
 
-class Hex{
- constructor(q,r){this.q=q;this.r=r;this.seed=null;}
- neighbors(){
-  const d=[[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]];
-  return d.map(v=>grid.find(h=>h.q==this.q+v[0]&&h.r==this.r+v[1])).filter(Boolean);
- }
- evolve(s){
-  if(this.seed===s) return;
-  this.seed=s;
-  popup="▶ "+SEED[s].n+" に進化";
-  flash=6;
- }
- update(){
-  if(!this.seed) return;
-  let n=this.neighbors().map(h=>h.seed);
-
-  // 住宅系
-  if(this.seed==="red" && n.filter(s=>s==="red").length>=2) this.evolve("dense");
-  if(this.seed==="dense" && n.filter(s=>s==="red").length>=3) this.evolve("town");
-
-  // 緑地系
-  if(this.seed==="green" && n.filter(s=>s==="green").length>=2) this.evolve("forest");
-  if(this.seed==="forest" && n.filter(s=>s==="green").length>=3) this.evolve("flood");
-
-  // 商業系
-  if(this.seed==="blue" && n.filter(s=>s==="blue").length>=2) this.evolve("hub");
-  if(this.seed==="hub" && n.filter(s=>s==="blue").length>=3) this.evolve("center");
-
-  // 工業系
-  if(this.seed==="yellow" && n.filter(s=>s==="yellow").length>=2) this.evolve("factory");
-  if(this.seed==="factory" && n.filter(s=>s==="yellow").length>=3) this.evolve("heavy");
-
-  // 合わせ技
-  if(this.seed==="red" && n.includes("green")) this.evolve("park");
-
-  // 失敗ルート
-  if(this.seed==="yellow" && n.filter(s=>s==="yellow").length>=2 && !n.includes("green"))
-    this.evolve("polluted");
-
-  if(this.seed==="red" && n.filter(s=>s==="red").length>=3 && !n.includes("green"))
-    this.evolve("disease");
-
-  if((this.seed==="polluted"||this.seed==="disease") && !n.includes("green"))
-    this.evolve("ruin");
- }
- draw(){
-  let p=hexPix(this.q,this.r);
-  stroke(90);
-  fill(this.seed?SEED[this.seed].c:"#33406b");
-  beginShape();
-  for(let i=0;i<6;i++){
-   let a=TWO_PI/6*i+PI/6;
-   vertex(p.x+cos(a)*HEX,p.y+sin(a)*HEX);
-  }
-  endShape(CLOSE);
- }
-}
+let counts = { red:0, green:0, yellow:0, blue:0 };
 
 function setup(){
- createCanvas(windowWidth,windowHeight);
- for(let q=-R;q<=R;q++)for(let r=-R;r<=R;r++)
-  if(abs(q+r)<=R) grid.push(new Hex(q,r));
+  createCanvas(window.innerWidth-360, window.innerHeight);
+  initGrid();
+  buildUI();
 }
 
 function draw(){
- background("#24304f");
- translate(width/2-160,height/2);
- grid.forEach(h=>{h.update();h.draw();});
- resetMatrix();
- drawUI();
- if(popup){
-  fill(255);textAlign(CENTER);textSize(18);
-  text(popup,width/2,40);
- }
- if(flash-- >0){
-  fill(255,40);rect(0,0,width,height);
- }
+  background(220,230,235);
+  drawGrid();
+}
+
+function initGrid(){
+  grid=[];
+  for(let y=0;y<rows;y++){
+    for(let x=0;x<cols;x++){
+      grid.push({
+        x,y,
+        seed:null
+      });
+    }
+  }
+}
+
+function drawGrid(){
+  translate(80,80);
+  for(let cell of grid){
+    let px = cell.x * hexSize * 1.5;
+    let py = cell.y * hexSize * 1.732 + (cell.x%2)*hexSize*0.866;
+    drawHex(px,py,hexSize,cell.seed);
+  }
+}
+
+function drawHex(x,y,r,seed){
+  push();
+  translate(x,y);
+  stroke(120);
+  strokeWeight(1);
+  fill(seed ? seedInfo[seed].color : "#ddd");
+  beginShape();
+  for(let a=0;a<6;a++){
+    let ang = PI/3*a;
+    vertex(cos(ang)*r,sin(ang)*r);
+  }
+  endShape(CLOSE);
+  pop();
 }
 
 function mousePressed(){
- if(mouseY>height-120) return;
- let h=pick(mouseX-width/2+160,mouseY-height/2);
- if(h&&!h.seed) h.seed=selected;
+  translate(80,80);
+  for(let cell of grid){
+    let px = cell.x * hexSize * 1.5;
+    let py = cell.y * hexSize * 1.732 + (cell.x%2)*hexSize*0.866;
+    if(dist(mouseX-80,mouseY-80,px,py)<hexSize){
+      if(cell.seed){
+        counts[cell.seed]--;
+      }
+      cell.seed=currentSeed;
+      counts[currentSeed]++;
+      buildUI();
+      break;
+    }
+  }
 }
 
-function mouseClicked(){
- let x=20,y=height-90;
- ["red","green","blue","yellow"].forEach(k=>{
-  if(mouseX>x&&mouseX<x+60&&mouseY>y&&mouseY<y+60) selected=k;
-  x+=70;
- });
+function buildUI(){
+  const ui=document.getElementById("ui");
+  ui.innerHTML=`
+<h2>🌱 ミライのタネ</h2>
+
+<div>
+${Object.keys(seedInfo).map(k=>`
+<span class="seed-btn" style="background:${seedInfo[k].color}"
+ onclick="selectSeed('${k}')">
+${seedInfo[k].name}
+</span>`).join("")}
+</div>
+
+<hr>
+
+<h3>📊 都市状況</h3>
+住宅:${counts.red}<br>
+緑地:${counts.green}<br>
+工場:${counts.yellow}<br>
+商業:${counts.blue}
+
+<hr>
+
+<h3>🤝 合わせ技（全体ルール）</h3>
+🔴×🟢×2 → 公園<br>
+🔴×🔵×3 → 複合商業施設<br>
+🟡×🔵×2 → 流通拠点<br>
+🟡×🟢×3 → 環境対応工場<br>
+
+<hr>
+
+<h3>⬆ レベルアップ</h3>
+🟢×5 → 都市公園<br>
+🟢×10 → 遊水池公園<br>
+🔴×10 → 高密度住宅<br>
+🟡×12 → 公害都市（失敗）<br>
+
+<hr>
+
+<h3>⚠ トラブル条件</h3>
+🦠 疫病：住宅80以上＋病院なし<br>
+🏭 公害：工場＞緑地×2<br>
+🌾 凶作：緑地減少5ターン<br>
+🌋 災害：半ランダム（緑少で↑）
+`;
 }
 
-function drawUI(){
- let x=20,y=height-90;
- ["red","green","blue","yellow"].forEach(k=>{
-  fill(SEED[k].c);rect(x,y,60,60,14);
-  fill(40);textSize(10);text(SEED[k].n,x+8,y+35);
-  if(selected===k){noFill();stroke(255);rect(x-3,y-3,66,66,16);noStroke();}
-  x+=70;
- });
-
- // 進化ツリー表示
- fill(255);textSize(12);
- text("進化ツリー",width-260,40);
- text("住宅 → 高密度 → ニュータウン",width-260,60);
- text("緑地 → 森林 → 遊水池",width-260,80);
- text("商業 → 拠点 → 中心市街地",width-260,100);
- text("工業 → 工業地帯 → 重工業",width-260,120);
- text("合わせ技：住宅＋緑地 → 住宅公園",width-260,150);
- text("⚠ 工業過多 → 公害 → 荒廃",width-260,180);
- text("⚠ 住宅過密 → 疫病 → 荒廃",width-260,200);
-}
-
-function hexPix(q,r){
- return {x:HEX*sqrt(3)*(q+r/2),y:HEX*1.5*r};
-}
-function pick(x,y){
- let best=null,d=9999;
- grid.forEach(h=>{
-  let p=hexPix(h.q,h.r);
-  let ds=dist(x,y,p.x,p.y);
-  if(ds<d){d=ds;best=h;}
- });
- return d<HEX?best:null;
-}
+window.selectSeed = function(k){
+  currentSeed = k;
+};
 </script>
 </body>
 </html>
