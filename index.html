@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>街と分解者プランター：進化版</title>
+<title>街と分解者プランター：整理版</title>
 <style>
 body {
   margin:0; font-family:sans-serif; background:#0b1d3a; color:#eef; text-align:center;
@@ -14,17 +14,17 @@ h1 { margin:16px 0; }
   grid-template-rows: repeat(10, 50px);
   gap:2px;
   margin:20px auto;
+  width:520px;
 }
 .tile {
   width:50px; height:50px;
   background:#3aaed8; border-radius:6px; cursor:pointer;
-  display:flex; align-items:center; justify-content:center;
-  font-size:20px; transition:0.3s;
+  transition:0.3s;
 }
-.tile.green{background:#28a745;color:#fff;}   /* 公園 */
-.tile.road{background:#6c757d;color:#fff;}    /* 道路 */
-.tile.factory{background:#ff6b6b;color:#fff;} /* 工場 */
-.tile.house{background:#f1c40f;color:#000;}   /* 建物 */
+.tile.green{background:#28a745;}    /* 公園 */
+.tile.road{background:#6c757d;}     /* 道路 */
+.tile.factory{background:#ff6b6b;}  /* 工場 */
+.tile.empty{background:#3aaed8;}    /* 空き */
 
 .soil {
   margin:20px auto; width:520px; height:120px;
@@ -37,14 +37,14 @@ h1 { margin:16px 0; }
 .dead { background: rgba(120,120,120,0.3); animation:none; }
 .garbage {
   position:absolute; width:12px; height:12px; border-radius:50%;
-  background:#888; transition: top 1s linear, left 1s linear;
+  background:#888; transition: top 0.8s linear;
 }
 @keyframes pulse { 0%{opacity:0.2}50%{opacity:1}100%{opacity:0.2} }
 </style>
 </head>
 <body>
 
-<h1>街と分解者プランター：進化版</h1>
+<h1>街と分解者プランター：整理版</h1>
 
 <div id="grid"></div>
 
@@ -53,7 +53,7 @@ h1 { margin:16px 0; }
 </div>
 
 <p>クリックでタイル切り替え、街を作ろう</p>
-<p>タイル: 🌳=公園, 🏠=建物, 🛣=道路, 🏭=工場, 青=空き</p>
+<p>タイル: 緑=公園, 灰=道路, 赤=工場, 青=空き</p>
 
 <script>
 const gridSize=10;
@@ -61,13 +61,12 @@ const grid=document.getElementById("grid");
 const soil=document.getElementById("soil");
 const soilStatus=document.getElementById("soilStatus");
 let health=100;
-const tileIcons={green:'🌳',house:'🏠',road:'🛣',factory:'🏭',empty:''};
-const typeOrder=["green","house","road","factory","empty"];
+const typeOrder=["green","road","factory","empty"];
 
 // 初期化
 for(let i=0;i<gridSize*gridSize;i++){
   const tile=document.createElement("div");
-  tile.className="tile"; tile.dataset.type="empty";
+  tile.className="tile empty"; tile.dataset.type="empty";
   tile.addEventListener("click",()=>{placeTile(tile)});
   grid.appendChild(tile);
 }
@@ -76,17 +75,15 @@ for(let i=0;i<gridSize*gridSize;i++){
 function placeTile(tile){
   let nextType=typeOrder[(typeOrder.indexOf(tile.dataset.type)+1)%typeOrder.length];
   tile.dataset.type=nextType;
-  tile.className="tile "+(nextType!=="empty"?nextType:"");
-  tile.textContent=tileIcons[nextType];
+  tile.className="tile "+nextType;
 
   // 健康変化
   if(nextType==="green") health+=5;
-  if(nextType==="house") health+=2;
   if(nextType==="road") health-=2;
   if(nextType==="factory") health-=5;
   health=Math.min(100,Math.max(0,health));
 
-  // ゴミ発生
+  // 工場はゴミ生成
   if(nextType==="factory") createGarbage(tile);
 
   updateSoil();
@@ -106,22 +103,21 @@ function updateSoil(){
   }
 }
 
-// ゴミ生成・落下・分解
+// ゴミ生成・落下
 function createGarbage(tile){
-  const rect=tile.getBoundingClientRect();
-  const soilRect=soil.getBoundingClientRect();
   const garbage=document.createElement("div");
   garbage.className="garbage";
-  garbage.style.left=(tile.offsetLeft+20)+"px";
-  garbage.style.top=(tile.offsetTop+10)+"px";
-  document.body.appendChild(garbage);
+  // grid 内座標を soil 内のランダム位置に変換
+  garbage.style.left = (Math.random()*500)+"px";
+  garbage.style.top = "0px";
+  soil.appendChild(garbage);
 
   // 落下
   setTimeout(()=>{
-    garbage.style.top=(soilRect.top + Math.random()*80)+"px";
+    garbage.style.top = "100px";
   },50);
 
-  // 分解処理
+  // 分解後削除
   setTimeout(()=>{
     garbage.remove();
     health=Math.min(100,health+3);
