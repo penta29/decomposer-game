@@ -1,182 +1,167 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<title>Decomposer City</title>
+<meta charset="UTF-8" />
+<title>プラネットプランター：街と分解者</title>
 <style>
-body { font-family: sans-serif; background:#eef2f3; margin:0; }
-header { background:#34495e; color:#fff; padding:10px; }
-#info { display:flex; gap:20px; padding:10px; }
-#grid { display:grid; grid-template-columns:repeat(6,80px); gap:6px; padding:10px; }
-.cell {
-  width:80px; height:80px; background:#fff;
-  border-radius:10px; display:flex;
-  flex-direction:column; align-items:center; justify-content:center;
-  font-size:12px; cursor:pointer;
-}
-button { margin:3px; }
-#log { height:140px; overflow:auto; background:#fff; padding:5px; }
-.win { color:green; font-weight:bold; }
-.lose { color:red; font-weight:bold; }
+  body {
+    margin: 0;
+    background: radial-gradient(circle at top, #0b1d3a, #000);
+    font-family: system-ui, sans-serif;
+    color: #eef;
+  }
+
+  h1 {
+    text-align: center;
+    margin: 16px 0 4px;
+    letter-spacing: 0.1em;
+  }
+
+  .world {
+    display: grid;
+    grid-template-rows: 1fr 0.7fr;
+    height: 90vh;
+    max-width: 1000px;
+    margin: auto;
+    border-radius: 24px;
+    overflow: hidden;
+    box-shadow: 0 0 40px rgba(0,255,255,0.2);
+  }
+
+  /* 上：街 */
+  .city {
+    background: linear-gradient(#3aaed8, #1b6ca8);
+    position: relative;
+    padding: 16px;
+  }
+
+  .city h2 {
+    margin: 0 0 8px;
+  }
+
+  .city-buttons button {
+    margin: 4px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    border: none;
+    cursor: pointer;
+    background: #fff;
+    font-weight: bold;
+  }
+
+  .status {
+    margin-top: 8px;
+    font-size: 14px;
+  }
+
+  /* 下：土壌 */
+  .soil {
+    background: linear-gradient(#3b2a1a, #1e1208);
+    position: relative;
+    padding: 16px;
+  }
+
+  .soil h2 {
+    margin: 0 0 8px;
+  }
+
+  .mycelium {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  .line {
+    position: absolute;
+    width: 2px;
+    height: 60px;
+    background: rgba(0,255,180,0.8);
+    animation: pulse 2s infinite;
+  }
+
+  .dead {
+    background: rgba(120,120,120,0.3);
+    animation: none;
+  }
+
+  @keyframes pulse {
+    0% { opacity: 0.2; }
+    50% { opacity: 1; }
+    100% { opacity: 0.2; }
+  }
+
+  footer {
+    text-align: center;
+    font-size: 12px;
+    opacity: 0.7;
+    margin: 4px 0 12px;
+  }
 </style>
 </head>
 <body>
 
-<header>
-<h2>Decomposer City</h2>
-<div>都市タイプ：<span id="cityType">未発展</span></div>
-</header>
+<h1>この街は、地上だけでできていない</h1>
 
-<div id="info">
-<div>
-<h4>タネ</h4>
-<button onclick="selectSeed('住宅')">住宅</button>
-<button onclick="selectSeed('緑地')">緑地</button>
-<button onclick="selectSeed('商業')">商業</button>
-<button onclick="selectSeed('工場')">工場</button>
-<div id="unlock"></div>
+<div class="world">
+  <!-- 街 -->
+  <div class="city">
+    <h2>🌆 街</h2>
+    <div class="city-buttons">
+      <button onclick="build('green')">🌳 公園を作る</button>
+      <button onclick="build('road')">🛣 道路を増やす</button>
+      <button onclick="build('factory')">🏭 工場を建てる</button>
+    </div>
+    <div class="status" id="cityStatus"></div>
+  </div>
+
+  <!-- 土壌 -->
+  <div class="soil">
+    <h2>🌱 二層目：土壌（分解者）</h2>
+    <div class="status" id="soilStatus"></div>
+    <div class="mycelium" id="mycelium"></div>
+  </div>
 </div>
 
-<div>
-<h4>状態</h4>
-<div>ターン: <span id="turn">0</span></div>
-<div>災害未対処: <span id="fail">0</span></div>
-</div>
-</div>
-
-<div id="grid"></div>
-
-<h4>ログ</h4>
-<div id="log"></div>
+<footer>
+  見えない層が、見える世界を支えている
+</footer>
 
 <script>
-const size = 6;
-let grid = [];
-let selected = "住宅";
-let turn = 0;
-let fail = 0;
-let unlocked = {};
-let gameEnd = false;
+  let health = 100;
 
-const log = msg => {
-  document.getElementById("log").innerHTML += msg+"<br>";
-};
+  const cityStatus = document.getElementById("cityStatus");
+  const soilStatus = document.getElementById("soilStatus");
+  const mycelium = document.getElementById("mycelium");
 
-const gridDiv = document.getElementById("grid");
+  function update() {
+    cityStatus.textContent =
+      "街の安定度：" + Math.max(0, Math.round(health));
+    soilStatus.textContent =
+      "分解者ネットワーク：" +
+      (health > 70 ? "活発" : health > 40 ? "不安定" : "断裂中");
 
-function init(){
-  for(let i=0;i<size*size;i++){
-    grid.push({type:"空", lv:0, disabled:false});
-  }
-  draw();
-}
-
-function draw(){
-  gridDiv.innerHTML="";
-  grid.forEach((c,i)=>{
-    const d=document.createElement("div");
-    d.className="cell";
-    d.innerHTML = c.type+"<br>Lv"+c.lv;
-    d.onclick=()=>place(i);
-    gridDiv.appendChild(d);
-  });
-}
-
-function selectSeed(s){ selected=s; }
-
-function place(i){
-  if(gameEnd) return;
-  const c=grid[i];
-  if(c.disabled) return;
-
-  if(c.type===selected){
-    c.lv++;
-  }else{
-    c.type=selected;
-    c.lv=1;
+    mycelium.innerHTML = "";
+    const lines = Math.max(1, Math.floor(health / 15));
+    for (let i = 0; i < lines; i++) {
+      const l = document.createElement("div");
+      l.className = "line" + (health < 40 ? " dead" : "");
+      l.style.left = Math.random() * 100 + "%";
+      l.style.top = Math.random() * 100 + "%";
+      mycelium.appendChild(l);
+    }
   }
 
-  checkLocal(i);
-  turn++;
-  document.getElementById("turn").innerText=turn;
-  disasterCheck();
-  updateCityType();
-  draw();
-}
+  function build(type) {
+    if (type === "green") health += 10;
+    if (type === "road") health -= 8;
+    if (type === "factory") health -= 15;
 
-function checkLocal(i){
-  const c=grid[i];
-  if(c.type==="住宅" && c.lv===3) c.type="集合住宅";
-  if(c.type==="集合住宅" && c.lv===3) c.type="高密度住宅";
-  if(c.type==="高密度住宅" && c.lv===3 && greenRate()<20){
-    c.type="スラム";
-    log("🏚 スラム発生");
-  }
-}
-
-function greenRate(){
-  return grid.filter(c=>c.type.includes("緑")).length / grid.length *100;
-}
-
-function disasterCheck(){
-  let rate=0.15;
-  if(greenRate()<20) rate+=0.1;
-  if(Math.random()<rate){
-    triggerDisaster();
-  }
-}
-
-function triggerDisaster(){
-  const types=["自然災害","疫病","凶作","公害"];
-  const d=types[Math.floor(Math.random()*types.length)];
-  log("⚠ 災害発生："+d);
-  fail++;
-  document.getElementById("fail").innerText=fail;
-
-  if(d==="疫病") unlock("病院");
-  if(d==="凶作") unlock("農地");
-  if(d==="公害") unlock("行政");
-
-  if(d==="疫病"){
-    grid.forEach(c=>{
-      if(c.type==="高密度住宅") c.type="スラム";
-    });
-  }
-  if(d==="公害"){
-    grid.forEach(c=>{
-      if(c.type==="緑地") c.disabled=true;
-    });
+    health = Math.max(0, Math.min(100, health));
+    update();
   }
 
-  checkEnd();
-}
-
-function unlock(s){
-  if(unlocked[s]) return;
-  unlocked[s]=true;
-  const b=document.createElement("button");
-  b.innerText=s;
-  b.onclick=()=>selectSeed(s);
-  document.getElementById("unlock").appendChild(b);
-  log("🔓 新タネ解放："+s);
-}
-
-function updateCityType(){
-  let type="未発展";
-  if(greenRate()>=40) type="🌱 環境先進都市";
-  if(grid.filter(c=>c.type.includes("商業")).length>=5) type="💰 経済都市";
-  if(grid.some(c=>c.type==="医療センター")) type="🏥 安心都市";
-  document.getElementById("cityType").innerText=type;
-}
-
-function checkEnd(){
-  if(fail>=3){
-    log("<span class='lose'>☠ 崩壊都市（ゲームオーバー）</span>");
-    gameEnd=true;
-  }
-}
-
-init();
+  update();
 </script>
+
 </body>
 </html>
